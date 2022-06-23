@@ -55,29 +55,6 @@ def yf_fund(ticker, start_date, end_date, principal):
     return df_yf_fund, yf_fund_cost_basis
 
 
-def managed_fund(principal, current_value, df_yf_fund):
-    start_date = df_yf_fund.index[0]
-    end_date = df_yf_fund.index[-1]
-    period = (end_date - start_date).days
-    period_years = period/365
-    rate = ((current_value/principal)**(1/period_years)) - 1
-
-    df_managed_fund = pd.DataFrame()
-    df_managed_fund['Date'] = [(start_date + timedelta(i))
-                               for i in range(period + 1)]
-    df_managed_fund.Date = pd.to_datetime(df_managed_fund.Date)
-    df_managed_fund['Position'] = [principal *
-                                   (1 + rate) ** (i/365) for i in range(period + 1)]
-    df_managed_fund = df_managed_fund[df_managed_fund.Date.isin(
-        df_yf_fund.index.values)]
-    df_managed_fund = df_managed_fund.set_index('Date')
-    df_managed_fund['legend'] = 'Managed Fund'
-    df_managed_fund.columns = [
-        f'Managed {i}' for i in df_managed_fund.columns]
-
-    return df_managed_fund, rate
-
-
 def create_source(df_fund1, df_fund2):
     df_source = pd.DataFrame()
     df_fund1.index = pd.to_datetime(df_fund1.index)
@@ -116,12 +93,12 @@ def make_plot(df_source, title):
         ('Difference', '@Difference{$0,0}'),
     ]
 
-    plot = figure(width_policy='fit', height_policy='fit',
+    plot = figure(sizing_mode='stretch_both', width_policy='fit', height_policy='fit',
                   x_axis_type='datetime', title=title)
     plot.line('Date', position1, source=source, legend_field='legend1',
-              color=d3['Category10'][10][0], line_width=3)
+              color=d3['Category20'][10][0], line_width=3)
     plot.line('Date', position2, source=source, legend_field='legend2',
-              color=d3['Category10'][10][1], line_width=3)
+              color=d3['Category20'][10][5], line_width=3)
     plot.add_tools(CrosshairTool())
     plot.add_tools(HoverTool(tooltips=TOOLTIPS,
                              formatters={'@Date': 'datetime'}))
@@ -155,74 +132,46 @@ def div_text(df_source, cost_basis, investment_type):
     return text
 
 
-def update(attr, old, new, tab_no):
-    start_date = pd.to_datetime(start_date_picker[tab_no].value).date()
-    end_date = pd.to_datetime(end_date_picker[tab_no].value).date()
-    principal = principal_spinner[tab_no].value
-    current_value = current_value_spinner[tab_no].value
-    min_date = find_min_date(tab_no)
-    start_date_picker[tab_no].min_date = min_date
+def update(attr, old, new):
+    start_date = pd.to_datetime(start_date_picker.value).date()
+    end_date = pd.to_datetime(end_date_picker.value).date()
+    principal = principal_spinner.value
+    current_value = current_value_spinner.value
+    min_date = find_min_date()
+    start_date_picker.min_date = min_date
 
     if start_date < min_date:
-        start_date_picker[tab_no].value = min_date
+        start_date_picker.value = min_date
         start_date = min_date
 
-    if tab_no == 1:
-        df_fund_2[1], index_cost_basis = yf_fund(
-            fund_2[1].value, start_date, end_date, principal)
-        df_fund_1[1], rate = managed_fund(
-            principal, current_value, df_fund_2[1])
-        df_source[1] = create_source(df_fund_1[1], df_fund_2[1])
+    df_fund_1, stock_cost_basis = yf_fund(
+        fund_1.value, start_date, end_date, principal)
+    df_fund_2, stock2_cost_basis = yf_fund(
+        fund_2.value, start_date, end_date, principal)
+    df_source = create_source(
+        df_fund_1, df_fund_2)
 
-        new_source = ColumnDataSource(df_source[1])
-        source[tab_no].data.update(new_source.data)
-        div[tab_no].text = div_text(df_source[1], 'N/A', 'managed fund')
-
-    else:
-        df_fund_1[tab_no], stock_cost_basis = yf_fund(
-            fund_1[tab_no].value, start_date, end_date, principal)
-        df_fund_2[tab_no], stock2_cost_basis = yf_fund(
-            fund_2[tab_no].value, start_date, end_date, principal)
-        df_source[tab_no] = create_source(
-            df_fund_1[tab_no], df_fund_2[tab_no])
-
-        new_source = ColumnDataSource(df_source[tab_no])
-        source[tab_no].data.update(new_source.data)
-        div[tab_no].text = div_text(
-            df_source[tab_no], stock_cost_basis, f'{fund_1[tab_no].value} investment')
+    new_source = ColumnDataSource(df_source)
+    source.data.update(new_source.data)
+    div.text = div_text(
+        df_source, stock_cost_basis, f'{fund_1.value} investment')
 
 
-def find_min_date(tab_no):
-    if tab_no == 1:
-        ticker = ticker_symbols[fund_2[tab_no].value]
-        min_date = yf.Ticker(ticker).history(
-            period='max').head(1).index[0].date()
-
-    elif tab_no == 2:
-        min_date_top = yf.Ticker(fund_1[tab_no].value).history(
-            period='max').head(1).index[0].date()
-        ticker = ticker_symbols[fund_2[tab_no].value]
-        min_date_bottom = yf.Ticker(ticker).history(
-            period='max').head(1).index[0].date()
-        min_date = max(min_date_top, min_date_bottom)
-
-    elif tab_no == 3:
-        min_date_top = yf.Ticker(fund_1[tab_no].value).history(
-            period='max').head(1).index[0].date()
-        min_date_bottom = yf.Ticker(fund_2[tab_no].value).history(
-            period='max').head(1).index[0].date()
-        min_date = max(min_date_top, min_date_bottom)
+def find_min_date():
+    min_date_top = yf.Ticker(fund_1.value).history(
+        period='max').head(1).index[0].date()
+    min_date_bottom = yf.Ticker(fund_2.value).history(
+        period='max').head(1).index[0].date()
+    min_date = max(min_date_top, min_date_bottom)
 
     return min_date
 
 # WIDGETS
-
-
 principal = 1000.0
 current_value = 3000.0
 ticker = 'S&P 500'
-start_date = date(2016, 5, 3)
-end_date = date(2021, 5, 7)
+start_date = date(2021, 1, 1)
+end_date = date(2022, 1, 1)
 max_date = yf.Ticker(ticker_symbols[ticker]).history(
     period='max').index[-1].date()
 
@@ -234,26 +183,18 @@ current_value_spinner = {}
 fund_1 = {}
 fund_2 = {}
 
-fund_1[1] = None
-fund_2[1] = Select(title='Index', value='S&P 500',
-                   options=['DJI', 'S&P 500'])
+fund_1 = TextInput(value="AMZN", title="Stock Ticker Symbol")
+fund_2 = TextInput(value="GOOG", title="Stock 2 Ticker Symbol")
 
-fund_1[2] = TextInput(value="AMZN", title="Stock Ticker Symbol")
-fund_2[2] = Select(title='Index', value='S&P 500',
-                   options=['DJI', 'S&P 500'])
 
-fund_1[3] = TextInput(value="AMZN", title="Stock Ticker Symbol")
-fund_2[3] = TextInput(value="GOOG", title="Stock 2 Ticker Symbol")
-
-for i in [1, 2, 3]:
-    start_date_picker[i] = DatePicker(title='Start Date', value=start_date, min_date=find_min_date(i),
-                                      max_date=max_date)  # , min_date="2019-08-01", max_date="2019-10-30")
-    end_date_picker[i] = DatePicker(title='End Date', value=end_date, min_date=find_min_date(i),
+start_date_picker = DatePicker(title='Start Date', value=start_date, min_date=find_min_date(),
                                     max_date=max_date)
-    principal_spinner[i] = Spinner(
-        value=principal, step=1, title='Principal')
-    current_value_spinner[i] = Spinner(
-        value=current_value, step=1, title='Current Value')
+end_date_picker = DatePicker(title='End Date', value=end_date, min_date=find_min_date(),
+                                max_date=max_date)
+principal_spinner = Spinner(
+    value=principal, step=1, title='Principal')
+current_value_spinner = Spinner(
+    value=current_value, step=1, title='Current Value')
 
 # Dicitonaries to store dataframes/CDS that populate each tab
 df_fund_1 = {}
@@ -262,80 +203,33 @@ df_source = {}
 source = {}
 div = {}
 
-# Tab 1
 # Data
-
-df_fund_2[1], index_cost_basis = yf_fund(
-    fund_2[1].value, start_date, end_date, principal)
-df_fund_1[1], rate = managed_fund(principal, current_value, df_fund_2[1])
-df_source[1] = create_source(df_fund_1[1], df_fund_2[1])
-
-# Set-up Plots
-
-plot1, source[1] = make_plot(df_source[1], 'Managed Fund vs. Index')
-div[1] = Div(text=div_text(df_source[1], 'N/A', 'managed fund'),
-             sizing_mode='stretch_width', height=100)
-
-# Layout
-
-inputs = column(principal_spinner[1], current_value_spinner[1], fund_2[1], start_date_picker[1],
-                end_date_picker[1], div[1])
-tab_managed = Panel(child=row(plot1, inputs),
-                    title='Managed Fund vs Index')
-
-# Tab2
-# Data
-
-df_fund_1[2], stock_cost_basis = yf_fund(
-    fund_1[2].value, start_date, end_date, principal)
-df_fund_2[2], index_cost_basis = yf_fund(
-    fund_2[2].value, start_date, end_date, principal)
-df_source[2] = create_source(df_fund_1[2], df_fund_2[2])
-
-# Plots
-
-plot2, source[2] = make_plot(df_source[2], 'Stock vs. Index')
-current_value_stock = df_source[2]['Stock Position'][-1]
-div[2] = Div(text=div_text(df_source[2], stock_cost_basis, f'{fund_1[2].value} investment'),
-             sizing_mode='stretch_width', height=100)
-# Layout
-
-inputs_stock = column(principal_spinner[2], fund_1[2], fund_2[2], start_date_picker[2],
-                      end_date_picker[2], div[2])
-tab_stock = Panel(child=row(plot2, inputs_stock), title='Stock vs Index')
-
-# Tab3
-# Data
-
-df_fund_1[3], stock_cost_basis = yf_fund(
-    fund_1[3].value, start_date, end_date, principal)
-df_fund_2[3], stock2_cost_basis = yf_fund(
-    fund_2[3].value, start_date, end_date, principal)
-df_source[3] = create_source(df_fund_1[3], df_fund_2[3])
+df_fund_1, stock_cost_basis = yf_fund(
+    fund_1.value, start_date, end_date, principal)
+df_fund_2, stock2_cost_basis = yf_fund(
+    fund_2.value, start_date, end_date, principal)
+df_source = create_source(df_fund_1, df_fund_2)
 
 # Plot
-
-plot3, source[3] = make_plot(df_source[3], 'Stock vs. Stock 2')
-current_value_stock2 = df_source[3][f'Stock Position'][-1]
-div[3] = Div(text=div_text(df_source[3], stock_cost_basis, f'{fund_1[3].value} investment'),
-             sizing_mode='stretch_width', height=100)
+plot3, source = make_plot(df_source, 'Stock 1 vs. Stock 2')
+current_value_stock2 = df_source[f'Stock Position'][-1]
+div = Div(text=div_text(df_source, stock_cost_basis, f'{fund_1.value} investment'),
+             sizing_mode='stretch_width', height=500)
 
 # Layout
 
 inputs_stock2 = column(
-    principal_spinner[3], fund_1[3], fund_2[3], start_date_picker[3], end_date_picker[3], div[3])
+    principal_spinner, fund_1, fund_2, start_date_picker, end_date_picker, div)
 tab_stock2 = Panel(child=row(plot3, inputs_stock2),
-                   title='Stock vs Stock 2')
+                   title='Stock 1 vs Stock 2')
 layout = Tabs(tabs=[tab_stock2])
 
-for i in [1, 2, 3]:
-    start_date_picker[i].on_change('value', partial(update, tab_no=i))
-    end_date_picker[i].on_change('value', partial(update, tab_no=i))
-    principal_spinner[i].on_change('value', partial(update, tab_no=i))
-    current_value_spinner[i].on_change('value', partial(update, tab_no=i))
+start_date_picker.on_change('value', partial(update))
+end_date_picker.on_change('value', partial(update))
+principal_spinner.on_change('value', partial(update))
+current_value_spinner.on_change('value', partial(update))
 
-    fund_2[i].on_change('value', partial(update, tab_no=i))
-    if i != 1:
-        fund_1[i].on_change('value', partial(update, tab_no=i))
+fund_2.on_change('value', partial(update))
+fund_1.on_change('value', partial(update))
 
 curdoc().add_root(layout)
